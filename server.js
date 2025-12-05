@@ -1,44 +1,69 @@
-import express from "express";
-import axios from "axios";
-import dotenv from "dotenv";
-import cors from "cors";
+document.addEventListener("DOMContentLoaded", () => {
+    const form = document.getElementById("rastreioForm");
+    const input = document.getElementById("codigo");
+    const resultadoDiv = document.getElementById("resultado");
+    const loading = document.getElementById("loading");
 
-dotenv.config();
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const codigo = input.value.trim();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+        if (!codigo) {
+            mostrarErro("Digite um código de rastreio válido.");
+            return;
+        }
 
-const TOKEN = process.env.CORREIOS_TOKEN;
+        resultadoDiv.innerHTML = "";
+        loading.style.display = "block";
 
-app.get("/rastrear/:codigo", async (req, res) => {
-    const codigo = req.params.codigo;
+        try {
+            const response = await fetch(`https://rastreiophp-production.up.railway.app/rastreio.php?codigo=${codigo}`);
 
-    try {
-        const r = await axios.post(
-            "https://api.correios.com.br/v1/sro-rastro",
-            {
-                codigos: [codigo]
-            },
-            {
-                headers: {
-                    "Authorization": `Bearer ${TOKEN}`,
-                    "Content-Type": "application/json"
-                }
+            if (!response.ok) {
+                throw new Error("Erro ao consultar o servidor.");
             }
-        );
 
-        res.json(r.data);
+            const data = await response.json();
+            loading.style.display = "none";
 
-    } catch (error) {
-        console.error("Erro:", error.response?.data || error.message);
+            if (data.error) {
+                mostrarErro(data.error);
+                return;
+            }
 
-        return res.json({
-            erro: "Código não encontrado ou API recusou a consulta."
-        });
+            mostrarResultado(data);
+
+        } catch (err) {
+            loading.style.display = "none";
+            mostrarErro("Falha na conexão. Tente novamente.");
+            console.error(err);
+        }
+    });
+
+    function mostrarErro(msg) {
+        resultadoDiv.innerHTML = `
+            <div class="erro">
+                ❌ ${msg}
+            </div>
+        `;
     }
-});
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log("Servidor rodando...");
+    function mostrarResultado(data) {
+        resultadoDiv.innerHTML = `
+            <div class="card">
+                <h2>📦 Informações do Objeto</h2>
+                <p><strong>Código:</strong> ${data.codigo}</p>
+                <p><strong>Status:</strong> ${data.status}</p>
+                <p><strong>Última atualização:</strong> ${data.ultima_atualizacao}</p>
+                <hr>
+                <h3>📍 Movimentações</h3>
+                ${data.eventos.map(evento => `
+                    <div class="evento">
+                        <p><strong>${evento.data}</strong> — ${evento.local}</p>
+                        <p>${evento.status}</p>
+                    </div>
+                `).join("")}
+            </div>
+        `;
+    }
 });
